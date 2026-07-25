@@ -2,6 +2,7 @@ from django.shortcuts import render
 
 # Create your views here.
 from .models import *
+from django.contrib.auth.hashers import make_password, check_password
 import json
 from django.core import serializers
 from django.http import HttpResponse, JsonResponse
@@ -31,19 +32,20 @@ def logout(request):
 def register(request):
 	username=request.POST.get("username")
 	password=request.POST.get("password")
+	user_type=request.POST.get("user_type")
 	mobile=request.POST.get("mobile")
 	p_address=request.POST.get("p_address")
 
-	print(username,password,user_type,mobile,p_address)
-
-
-	obj10=Requests.objects.filter(mobile=mobile,username=username,password=password,p_address=p_address,user_type=user_type)
+	# De-duplicate on identity fields only. The stored password is salted-hashed,
+	# so the same password hashes differently every time; filtering by the hash
+	# would never match and would defeat the pending-request check.
+	obj10=Requests.objects.filter(mobile=mobile,username=username,p_address=p_address,user_type=user_type)
 	co=obj10.count()
 	if co==1:
 		return HttpResponse("<script>alert('Request is in Pending list');window.location.href='/show_index/'</script>")
 
 	else:
-		obj1=Requests(mobile=mobile,username=username,password=password,p_address=p_address,user_type=user_type)
+		obj1=Requests(mobile=mobile,username=username,password=make_password(password),p_address=p_address,user_type=user_type)
 		obj1.save()
 		return HttpResponse("<script>alert('Request sent, Wait For Approval');window.location.href='/show_index/'</script>")
 
@@ -54,21 +56,16 @@ def check_login(request):
 	username = request.POST.get("username")
 	password = request.POST.get("password")
 
-	print(username)
-	print(password)
-
 	if username == 'admin' and password == 'admin':
 		request.session["uid"] = "admin"
 		return HttpResponse("<script>alert('Admin Login Successful');window.location.href='/show_home_admin/'</script>")
 	
 	else:
 		
-		obj2=Users.objects.filter(username=username,password=password)
-		c2=obj2.count()
-		if c2==1:
-			ob9=Users.objects.get(username=username,password=password)
-			request.session["uid"] = ob9.u_id
-			request.session["username"]=ob9.username
+		user=Users.objects.filter(username=username).first()
+		if user is not None and check_password(password, user.password):
+			request.session["uid"] = user.u_id
+			request.session["username"]=user.username
 			return HttpResponse("<script>alert('User Login Successful');window.location.href='/show_home_user/'</script>")
 		else:
 			return HttpResponse("<script>alert('Invalid');window.location.href='/show_index/'</script>")
